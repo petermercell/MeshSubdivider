@@ -25,6 +25,26 @@ static const char* const HELP = "smooth geo faces. triangles and quads";
 
 static const char* const scheme_type_mode[] = { "Bilinear", "Catmull Clark", "Loop", 0 };
 
+void
+getNormal(float N[3], float const du[3], float const dv[3]) {
+
+    N[0] = du[1] * dv[2] - du[2] * dv[1];
+    N[1] = du[2] * dv[0] - du[0] * dv[2];
+    N[2] = du[0] * dv[1] - du[1] * dv[0];
+
+    float lenSqrd = N[0] * N[0] + N[1] * N[1] + N[2] * N[2];
+    if (lenSqrd <= 0.0f) {
+        N[0] = 0.0f;
+        N[1] = 0.0f;
+        N[2] = 0.0f;
+    }
+    else {
+        float lenInv = 1.0f / std::sqrt(lenSqrd);
+        N[0] *= lenInv;
+        N[1] *= lenInv;
+        N[2] *= lenInv;
+    }
+}
 
 
 class MeshReducer : public SourceGeo
@@ -269,18 +289,23 @@ void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
                 //}
                 for (uint32_t i = 0; i < vertex_count; ++i)
                     uv->vector4(v++).set(shape.outUV[i * 2], shape.outUV[i * 2 + 1], 0, 1);
-            
-                //Attribute* N = out.writable_attribute(obj, Group_Vertices, "N", NORMAL_ATTRIB);
-                //assert(N != nullptr);
-                //N->resize(tri_count * 3);
-                //
-                //iter = 0;
-                //for (uint32_t i = 0; i < tri_count; ++i) {
-                //    const auto& normal = mesh.triangles[i].normal;
-                //    for (uint32_t p = 0; p < 3; ++p) {
-                //        N->normal(iter++).set(normal.x, normal.y, normal.z);
-                //    }
-                //}
+            }
+
+            if (rebuild(Mask_Attributes)) {
+                Attribute* N = out.writable_attribute(obj, Group_Object, "N", NORMAL_ATTRIB);
+                assert(N != nullptr);
+                assert(shape.outDu.size() == shape.outDv.size());
+                int numNewNormals = (int)shape.outDu.size() / 3;
+                N->resize(numNewNormals);
+                
+                float const* dPdu = &shape.outDu[0];
+                float const* dPdv = &shape.outDv[0];
+                for (int i = 0; i < numNewNormals; ++i, dPdu += 3, dPdv += 3) {
+                    float normal[3];
+                    getNormal(normal, dPdu, dPdv);
+                    N->normal(i).set(normal[0], normal[1], normal[2]);
+                }
+
             }
 
             out.synchronize_objects();
