@@ -182,8 +182,8 @@ void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
         Far::TopologyRefiner* meshTopology = 0;
         meshTopology = readTopologyRefiner(info, this, schemeType, meshVtxPositions, meshFVarUVs);
 
-        //if (meshTopology == NULL) this->error("missing geo"); return;
-        //
+        if (meshTopology == NULL) { this->error("cannot read geo"); return; }
+        
         
         //  Expand the loaded position and UV arrays to include additional
         //  data (initialized with -1 for distinction), e.g. add a 4-tuple
@@ -254,7 +254,7 @@ void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
             // Force points and attributes to update:
             set_rebuild(Mask_Points | Mask_Attributes);
             
-            if (rebuild(Mask_Attributes)) {
+            if (rebuild(Mask_Attributes) && shape.outUV.size() != 0) {
                 // Add the UV and N mapping to allow rendering.
                 Attribute* uv = out.writable_attribute(obj, Group_Points, "uv", VECTOR4_ATTRIB);
                 assert(uv != nullptr);

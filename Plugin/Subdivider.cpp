@@ -55,19 +55,22 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
 
         }
     }
-    DD::Image::GroupType n_group_type = N_ref->group;    // normal group type 
+    DD::Image::GroupType n_group_type = DD::Image::Group_None;
+    if(vertex_normal)
+        DD::Image::GroupType n_group_type = N_ref->group;    // normal group type 
 
     // get the original uv attribute used to restore untouched uv coordinate
     //const DD::Image::AttribContext* UV_ref = geoInfo.UV_ref;
     const DD::Image::AttribContext* UV_ref = geoInfo.get_attribcontext("uv");
     DD::Image::AttributePtr uv_original = UV_ref ? UV_ref->attribute : DD::Image::AttributePtr();
-    DD::Image::GroupType t_group_type;
+    DD::Image::GroupType t_group_type = DD::Image::Group_None;
 
-    if (!uv_original) {
-        op->error("Missing uv channel from geometry");
-        //return false;
-    }
-    else {
+    //if (!uv_original) {
+    //    op->error("Missing uv channel from geometry");
+    //    //return false;
+    //}
+    /*else {*/
+    if (uv_original) {
 
         uint32_t numUVs = uv_original->size();
 
@@ -169,8 +172,8 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
                     unsigned ni = (n_group_type == DD::Image::Group_Points) ? vi : (vertexOffset + v);
 
                     s->faceverts.push_back(vi);
-                    s->faceuvs.push_back(ti);
-                    s->facenormals.push_back(ni);
+                    if (uv_original) s->faceuvs.push_back(ti);
+                    if (vertex_normal) s->facenormals.push_back(ni);
 
                 }
 
