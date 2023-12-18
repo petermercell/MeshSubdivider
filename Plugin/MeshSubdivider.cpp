@@ -5,15 +5,13 @@
 
 #include "DDImage/GeoOp.h"
 #include "DDImage/SourceGeo.h"
-#include "DDImage/ModifyGeo.h"
 #include "DDImage/Scene.h"
 #include "DDImage/Knob.h"
 #include "DDImage/Knobs.h"
-#include "DDImage/Mesh.h"
-#include "DDImage/Channel3D.h"
 
 #include "DDImage/PolyMesh.h"
-#include "DDImage/Triangle.h"
+
+//#include "DDImage/Material.h"
 
 #include <assert.h>
 
@@ -81,30 +79,30 @@ public:
         , tessUniformRate(5)
     {}
 
-    int minimum_inputs() const { return 1; }
-    int maximum_inputs() const { return 1; }
+    int minimum_inputs() const { return 2; }
+    int maximum_inputs() const { return 2; }
 
     bool test_input(int input, Op* op) const
     {
-        //if (input == 1)
-        //    return dynamic_cast<AxisOp*>(op) != 0;
-        return GeoOp::test_input(input, op);
+        if (input == 1)
+            return dynamic_cast<GeoOp*>(op) != 0;
+        return SourceGeo::test_input(input, op);
     }
 
     Op* default_input(int input) const
     {
-        //if (input == 1)
-        //    return 0;
-        return GeoOp::default_input(input);
+        if (input == 1)
+            return 0;
+        return SourceGeo::default_input(input);
     }
 
     const char* input_label(int input, char* buffer) const
     {
         switch (input) {
         case 0:
-            return 0;
-        //case 1:
-        //    return "axis/cam";
+            return "material";
+        case 1:
+            return "geo";
         default:
             return 0;
         }
@@ -164,7 +162,6 @@ void MeshReducer::get_geometry_hash()
 {
     // Get all hashes up-to-date
     GeoOp::get_geometry_hash(); //needs to be GeoOp as it updates the input geo hash
-    //SourceGeo::get_geometry_hash(); // probably not necessary
 
     Hash knob_hash;
     knob_hash.reset();
@@ -184,139 +181,136 @@ void MeshReducer::get_geometry_hash()
 
 void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
 {
-    GeometryList object_list;
 
-    input0()->get_geometry(scene, object_list);
 
-    scene.clear();
+    //if (rebuild(Mask_Primitives) || rebuild(Mask_Points) || rebuild(Mask_Attributes)) {
+    if (rebuild(Mask_Primitives)) {
 
-    out.delete_objects();
+        GeometryList object_list;
 
-    // Call the engine on all the caches:
-    for (uint32_t obj = 0; obj < object_list.objects(); obj++) {
-        GeoInfo& info = object_list[obj];
+        input1()->get_geometry(scene, object_list);
 
-        std::vector<float>     meshVtxPositions;
-        std::vector<float>     meshFVarUVs;
+        scene.clear();
 
-        Far::TopologyRefiner* meshTopology = 0;
-        meshTopology = readTopologyRefiner(info, this, schemeType, meshVtxPositions, meshFVarUVs);
+        out.delete_objects();
 
-        if (meshTopology == NULL) { this->error("cannot read geo"); return; }
-        
-        
-        //  Expand the loaded position and UV arrays to include additional
-        //  data (initialized with -1 for distinction), e.g. add a 4-tuple
-        //  for RGBA color to the vertex data and add a third field ("w")
-        //  to the face-varying data:
-        
-        int numPos = (int)meshVtxPositions.size() / 3;
-        int vtxSize = 7;
-        std::vector<float> vtxData(numPos * vtxSize, -1.0f);
-        for (int i = 0; i < numPos; ++i) {
-            vtxData[i * vtxSize] = meshVtxPositions[i * 3];
-            vtxData[i * vtxSize + 1] = meshVtxPositions[i * 3 + 1];
-            vtxData[i * vtxSize + 2] = meshVtxPositions[i * 3 + 2];
-        }
+        // Call the engine on all the caches:
+        for (uint32_t obj = 0; obj < object_list.objects(); obj++) {
+            const DD::Image::GeoInfo& info = object_list[obj];
 
-        int numUVs = (int)meshFVarUVs.size() / 2;
-        int fvarSize = 3;
-        std::vector<float> fvarData(numUVs * fvarSize, -1.0f);
-        for (int i = 0; i < numUVs; ++i) {
-            fvarData[i * fvarSize] = meshFVarUVs[i * 2];
-            fvarData[i * fvarSize + 1] = meshFVarUVs[i * 2 + 1];
-        }
+            std::vector<float>     meshVtxPositions;
+            std::vector<float>     meshFVarUVs;
 
-        //
-        //  Pass the expanded data arrays along with their respective strides:
-        //
-        std::vector<ShapeData> shape_list = tessellateToObj(*meshTopology, vtxData, vtxSize, fvarData, fvarSize, tessQuadsFlag, tessUniformRate);
+            Far::TopologyRefiner* meshTopology = 0;
+            meshTopology = readTopologyRefiner(info, this, schemeType, meshVtxPositions, meshFVarUVs);
 
-        const int tessFacetSize = 3 + tessQuadsFlag;
+            if (meshTopology == NULL) { this->error("cannot read geo"); return; }
 
-        int vertex_offset = 0;
 
-        for (const auto& shape : shape_list) {
-        //for (int i = 50; i < std::min(shape_list.size(), (size_t)150); ++i){
-        //    const ShapeData& shape = shape_list[i];
-            const uint32_t faces_count = shape.numFacets;
-            const size_t vertex_count = shape.outPos.size() / tessFacetSize;
+            //  Expand the loaded position and UV arrays to include additional
+            //  data (initialized with -1 for distinction), e.g. add a 4-tuple
+            //  for RGBA color to the vertex data and add a third field ("w")
+            //  to the face-varying data:
 
-            if (rebuild(Mask_Primitives)) {
-                out.add_object(obj);
-
-                auto polymesh = new PolyMesh(faces_count, tessFacetSize);
-                auto iterFacets = shape.outFacets.begin();
-                for (size_t i = 0; i < faces_count; ++i) {
-                    std::vector<int> face; // int face[3] = { *iterFacets++ - vertex_count * obj, *iterFacets++ - vertex_count * obj, *iterFacets++ - vertex_count * obj };
-                    face.reserve(tessFacetSize);
-                    for (int i = 0; i < tessFacetSize; ++i) face.push_back(*iterFacets++ - vertex_offset);
-                    polymesh->add_face(tessFacetSize, face.data());
-                }
-                out.add_primitive(obj, polymesh);
-
-                // adding material
-                out[obj].material = info.material;
+            int numPos = (int)meshVtxPositions.size() / 3;
+            int vtxSize = 7;
+            std::vector<float> vtxData(numPos * vtxSize, -1.0f);
+            for (int i = 0; i < numPos; ++i) {
+                vtxData[i * vtxSize] = meshVtxPositions[i * 3];
+                vtxData[i * vtxSize + 1] = meshVtxPositions[i * 3 + 1];
+                vtxData[i * vtxSize + 2] = meshVtxPositions[i * 3 + 2];
             }
 
-            if (rebuild(Mask_Points)) {
-                PointList& points = *out.writable_points(obj);
-                points.resize(vertex_count);
-
-                auto iterFloat = shape.outPos.begin();
-
-                for (int i = 0; i < vertex_count; ++i) {
-                    points[i] = { *iterFloat++, *iterFloat++, *iterFloat++ };
-                }
+            int numUVs = (int)meshFVarUVs.size() / 2;
+            int fvarSize = 3;
+            std::vector<float> fvarData(numUVs * fvarSize, -1.0f);
+            for (int i = 0; i < numUVs; ++i) {
+                fvarData[i * fvarSize] = meshFVarUVs[i * 2];
+                fvarData[i * fvarSize + 1] = meshFVarUVs[i * 2 + 1];
             }
 
+            //
+            //  Pass the expanded data arrays along with their respective strides:
+            //
+            std::vector<ShapeData> shape_list = tessellateToObj(*meshTopology, vtxData, vtxSize, fvarData, fvarSize, tessQuadsFlag, tessUniformRate);
 
-            // Force points and attributes to update:
-            set_rebuild(Mask_Points | Mask_Attributes);
-            
-            if (rebuild(Mask_Attributes) && shape.outUV.size() != 0) {
-                // Add the UV and N mapping to allow rendering.
-                Attribute* uv = out.writable_attribute(obj, Group_Points, "uv", VECTOR4_ATTRIB);
-                assert(uv != nullptr);
-                uv->resize(shape.outUV.size() / 2);
-                unsigned v = 0; //vertex_offset;
-                //size_t iter = 0;
-                //for (uint32_t i = 0; i < faces_count; ++i) {
+            const int tessFacetSize = 3 + tessQuadsFlag;
 
-                //    for (uint32_t p = 0; p < tessFacetSize; ++p) {
-                //        uv->vector4(v++).set(shape.outCoords[outCoordsIter++], shape.outCoords[outCoordsIter++], 0, 1);
-                //    }
-                //}
-                for (uint32_t i = 0; i < vertex_count; ++i)
-                    uv->vector4(v++).set(shape.outUV[i * 2], shape.outUV[i * 2 + 1], 0, 1);
-            }
+            int vertex_offset = 0;
 
-            if (rebuild(Mask_Attributes)) {
-                Attribute* N = out.writable_attribute(obj, Group_Object, "N", NORMAL_ATTRIB);
-                assert(N != nullptr);
-                assert(shape.outDu.size() == shape.outDv.size());
-                int numNewNormals = (int)shape.outDu.size() / 3;
-                N->resize(numNewNormals);
-                
-                float const* dPdu = &shape.outDu[0];
-                float const* dPdv = &shape.outDv[0];
-                for (int i = 0; i < numNewNormals; ++i, dPdu += 3, dPdv += 3) {
-                    float normal[3];
-                    getNormal(normal, dPdu, dPdv);
-                    N->normal(i).set(normal[0], normal[1], normal[2]);
+            for (const auto& shape : shape_list) {
+                const uint32_t faces_count = shape.numFacets;
+                const size_t vertex_count = shape.outPos.size() / tessFacetSize;
+
+                if (rebuild(Mask_Primitives)) {
+                    out.add_object(obj);
+                    //out.writable_primitive(obj, );
+
+                    auto polymesh = new PolyMesh(faces_count, tessFacetSize);
+                    auto iterFacets = shape.outFacets.begin();
+                    for (size_t i = 0; i < faces_count; ++i) {
+                        std::vector<int> face; // int face[3] = { *iterFacets++ - vertex_count * obj, *iterFacets++ - vertex_count * obj, *iterFacets++ - vertex_count * obj };
+                        face.reserve(tessFacetSize);
+                        for (int i = 0; i < tessFacetSize; ++i) face.push_back(*iterFacets++ - vertex_offset);
+                        polymesh->add_face(tessFacetSize, face.data());
+                    }
+                    out.add_primitive(obj, polymesh);
+
+                    //// adding material
+                    //auto input_shader = (Iop*)input0();
+                    //out[obj + 2].material = input_shader; //info.material;
+                    //out[obj + 2].useMaterialContext = true;
                 }
 
+                // Force points and attributes to update:
+                set_rebuild(Mask_Points | Mask_Attributes);
+
+                if (rebuild(Mask_Points)) {
+                    PointList& points = *out.writable_points(obj);
+                    points.resize(vertex_count);
+
+                    auto iterFloat = shape.outPos.begin();
+
+                    for (int i = 0; i < vertex_count; ++i) {
+                        points[i] = { *iterFloat++, *iterFloat++, *iterFloat++ };
+                    }
+                }
+
+                if (rebuild(Mask_Attributes) && shape.outUV.size() != 0) {
+                    Attribute* uv = out.writable_attribute(obj, Group_Points, "uv", VECTOR4_ATTRIB);
+                    assert(uv != nullptr);
+                    uv->resize(shape.outUV.size() / 2);
+                    unsigned v = 0; //vertex_offset;
+
+                    for (uint32_t i = 0; i < vertex_count; ++i)
+                        uv->vector4(v++).set(shape.outUV[i * 2], shape.outUV[i * 2 + 1], 0, 1);
+                }
+
+                if (rebuild(Mask_Attributes)) {
+                    Attribute* N = out.writable_attribute(obj, Group_Object, "N", NORMAL_ATTRIB);
+                    assert(N != nullptr);
+                    assert(shape.outDu.size() == shape.outDv.size());
+                    int numNewNormals = (int)shape.outDu.size() / 3;
+                    N->resize(numNewNormals);
+
+                    float const* dPdu = &shape.outDu[0];
+                    float const* dPdv = &shape.outDv[0];
+                    for (int i = 0; i < numNewNormals; ++i, dPdu += 3, dPdv += 3) {
+                        float normal[3];
+                        getNormal(normal, dPdu, dPdv);
+                        N->normal(i).set(normal[0], normal[1], normal[2]);
+                    }
+
+                }
+                obj++;
+                vertex_offset += vertex_count;
             }
-
-            out.synchronize_objects();
-
-            //info.print_info(std::cout);
-            obj++;
-
-            vertex_offset += vertex_count;
+            delete meshTopology;
         }
 
-        delete meshTopology;
+        out.synchronize_objects();
+        // Force points and attributes to update:
+        set_rebuild(Mask_Points | Mask_Attributes);
     }
 
 }
