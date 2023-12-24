@@ -1,16 +1,37 @@
 #include "Subdivider.h"
 
-//  Local headers with support for this tutorial in "namespace tutorial"
-//#include "./meshLoader.h"
+#include "DDImage/GeoOp.h"
+#include "DDImage/PolyMesh.h"
 
-//#include "./objWriter.h"
 
-Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Scheme shapescheme, bool isLeftHanded)
-{
-    Shape* s = new Shape;
+void far_subdivision_with_primvar(const DD::Image::GeoInfo& geoInfo, DD::Image::GeoOp* op, DD::Image::GeometryList& out, const int obj, const int maxlevel, Sdc::SchemeType shapescheme) {
 
-    s->scheme = shapescheme;
-    s->isLeftHanded = isLeftHanded;
+
+    enum NormalApproximation normalApproximation = CrossTriangle;
+
+    // 'vertex' primitive variable data & topology
+    std::vector< DD::Image::Vector3 >g_verts; // [8] [3]
+
+    int g_nverts = 0; //g_verts.size();
+    int  g_nfaces = 0; //6
+
+    std::vector< int > g_vertsperface; // [6]
+
+    std::vector< int> g_vertIndices; // [24] 
+
+    // 'face-varying' primitive variable data & topology for UVs
+    std::vector< DD::Image::Vector2> g_uvs; // [14] [2]
+
+    int g_nuvs = 0; //g_uvs.size();
+
+    std::vector< int> g_uvIndices; // [24]
+
+    // 'face-varying' primitive variable data & topology for color
+    std::vector< DD::Image::Vector4 >g_colors; // [24] [4]
+
+    //int g_ncolors = 0; //g_colors.size();
+
+    //std::vector< int> g_colorIndices; // [24]
 
     const DD::Image::PointList* geoPoints = geoInfo.point_list();
 
@@ -27,40 +48,39 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
 
 
 
-    ////get normal information
-    const DD::Image::AttribContext* N_ref = geoInfo.get_attribcontext("N");
-    const DD::Image::AttributePtr vertex_normal = N_ref ? N_ref->attribute : DD::Image::AttributePtr();
+    //////get normal information
+    //const DD::Image::AttribContext* N_ref = geoInfo.get_attribcontext("N");
+    //const DD::Image::AttributePtr vertex_normal = N_ref ? N_ref->attribute : DD::Image::AttributePtr();
 
-    if (!vertex_normal) {
-        op->error("Missing \"N\" channel from geometry");
-        return false;
-    }
+    //if (!vertex_normal) {
+    //    op->error("Missing \"N\" channel from geometry");
+    //    return false;
+    //}
 
-    ////////////////////////////////////////////////////////////////////// adding all normals positions 
-    if (vertex_normal) {
+    //////////////////////////////////////////////////////////////////////// adding all normals positions 
+    //if (vertex_normal) {
 
-        uint32_t numNormals = vertex_normal->size();
-        s->normals.reserve(numNormals * 3);
+    //    uint32_t numNormals = vertex_normal->size();
+    //    s->normals.reserve(numNormals * 3);
 
-        for (int iterN = 0; iterN < numNormals; iterN++) {
+    //    for (int iterN = 0; iterN < numNormals; iterN++) {
 
-            const DD::Image::Vector3& localN = vertex_normal->normal(iterN);
-            DD::Image::Vector4 worldN = geoInfo.matrix * localN;
+    //        const DD::Image::Vector3& localN = vertex_normal->normal(iterN);
+    //        DD::Image::Vector4 worldN = geoInfo.matrix * localN;
 
-            //std::cout << "vertex N values at index " << iterN << ": --> " << localN.x << "  " << localN.y << "  " << localN.z << std::endl;
+    //        //std::cout << "vertex N values at index " << iterN << ": --> " << localN.x << "  " << localN.y << "  " << localN.z << std::endl;
 
-            s->normals.push_back(worldN.x);
-            s->normals.push_back(worldN.y);
-            s->normals.push_back(worldN.z);
+    //        s->normals.push_back(worldN.x);
+    //        s->normals.push_back(worldN.y);
+    //        s->normals.push_back(worldN.z);
 
-        }
-    }
-    DD::Image::GroupType n_group_type = DD::Image::Group_None;
-    if(vertex_normal)
-        DD::Image::GroupType n_group_type = N_ref->group;    // normal group type 
+    //    }
+    //}
+    //DD::Image::GroupType n_group_type = DD::Image::Group_None;
+    //if (vertex_normal)
+    //    DD::Image::GroupType n_group_type = N_ref->group;    // normal group type 
 
     // get the original uv attribute used to restore untouched uv coordinate
-    //const DD::Image::AttribContext* UV_ref = geoInfo.UV_ref;
     const DD::Image::AttribContext* UV_ref = geoInfo.get_attribcontext("uv");
     DD::Image::AttributePtr uv_original = UV_ref ? UV_ref->attribute : DD::Image::AttributePtr();
     DD::Image::GroupType t_group_type = DD::Image::Group_None;
@@ -79,23 +99,24 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
         //////////////////////////////////////////////////////////////////////// adding all uv positions 
         if (uv_original)
         {
-            s->uvs.reserve(numUVs * 2);
+            g_uvs.reserve(numUVs);
 
             for (uint32_t iterUV = 0; iterUV < numUVs; iterUV++) {
 
                 //std::cout << "final UV values at index " << iterUV << ": --> " << uv_original->vector4(iterUV).x / uv_original->vector4(iterUV).w << "  " << uv_original->vector4(iterUV).y / uv_original->vector4(iterUV).w << std::endl;
 
-                s->uvs.push_back(uv_original->vector4(iterUV).x / uv_original->vector4(iterUV).w);
-                s->uvs.push_back(uv_original->vector4(iterUV).y / uv_original->vector4(iterUV).w);
+                g_uvs.push_back({ uv_original->vector4(iterUV).x / uv_original->vector4(iterUV).w, uv_original->vector4(iterUV).y / uv_original->vector4(iterUV).w });
             }
         }
     }
+
+    g_nuvs = g_uvs.size();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////// 
     ////////////////////////////////////////////////////////////////////////////// ADDING ALL VERTEX POSITIONS
     ////////////////////////////////////////////////////////////////////////////////////////////////////////// 
 
-    s->verts.reserve(num_vertices * 3);
+    g_verts.reserve(num_vertices);
 
     for (uint32_t iter = 0; iter < num_vertices; iter++)
     {
@@ -103,11 +124,11 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
 
         DD::Image::Vector4 w_point(geoInfo.matrix * local_point);
 
-        for (uint32_t v = 0; v < 3; ++v)
-            s->verts.push_back(w_point[v]);
+        g_verts.push_back({ w_point[0],w_point[1],w_point[2] });
 
     }
 
+    g_nverts = g_verts.size();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////--------------------------------------------------------------------> GENERATE MESH
@@ -120,14 +141,6 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
         const int num_prims = geoInfo.primitives(); //amount of primitives
 
 
-        //// the following code stores the face numbers that are shared by each vertex
-        //vertex_faces.reserve(num_vertices);
-        //std::vector<int> faceList;
-        //faceList.reserve(num_vertices);
-
-        //for (uint32_t j = 0; j < num_vertices; j++)
-        //	vertex_faces.push_back(faceList); // store empty lists so that we can use the [] notation below
-
         // vertex index array
         std::vector<uint32_t> varray;
 
@@ -139,7 +152,7 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
             // get primitive
             const DD::Image::Primitive* prim = geoInfo.primitive(p);
             const uint32_t num_faces = prim->faces();
-            //std::cout << "total sub faces amount: " << num_faces << std::endl;
+
 
             // iterate all faces in the primitive
             for (uint32_t f = 0; f < num_faces; f++) {
@@ -147,14 +160,13 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
                 // get the number of vertex used by face f
                 const uint32_t num_verts = prim->face_vertices(f);
 
-                s->nvertsPerFace.push_back(num_verts);
+                g_nfaces++;
+                g_vertsperface.push_back(num_verts);
 
                 // get all used vertices index
                 varray.resize(num_verts);
 
                 prim->get_face_vertices(f, &varray[0]);
-                //if(n_group_type == DD::Image::Group_Vertices)
-                //    std::swap(varray[2], varray[3]);
 
                 // check all vertices in the face
                 for (unsigned v = 0; v < num_verts; ++v) {
@@ -169,11 +181,11 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
 
                     unsigned vi = prim->vertex(varray[v]); // +prim->vertex_offset();
                     unsigned ti = (t_group_type == DD::Image::Group_Points) ? vi : (vertexOffset + v);
-                    unsigned ni = (n_group_type == DD::Image::Group_Points) ? vi : (vertexOffset + v);
+                    //unsigned ni = (n_group_type == DD::Image::Group_Points) ? vi : (vertexOffset + v);
 
-                    s->faceverts.push_back(vi);
-                    if (uv_original) s->faceuvs.push_back(ti);
-                    if (vertex_normal) s->facenormals.push_back(ni);
+                    g_vertIndices.push_back(vi);
+                    if (uv_original)g_uvIndices.push_back(ti);
+                    //if (vertex_normal) s->facenormals.push_back(ni);
 
                 }
 
@@ -184,285 +196,328 @@ Shape* read_GeoOp_input(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sc
 
     }
 
-    return s;
-}
+    // Populate a topology descriptor with our raw data
+    Descriptor desc;
+    desc.numVertices = g_nverts;
+    desc.numFaces = g_nfaces;
+    desc.numVertsPerFace = g_vertsperface.data();
+    desc.vertIndicesPerFace = g_vertIndices.data();
 
-std::vector<ShapeData> tessellateToObj(Far::TopologyRefiner const& meshTopology, std::vector<float> const& meshVtxData, int vtxDataSize, std::vector<float> const& meshFVarData, int fvarDataSize, const bool tessQuadsFlag, const int tessUniformRate) {
+    // Create a face-varying channel descriptor
+    const int numChannels = 1;
+    const int channelUV = 0;
+    //const int channelColor = 1;
+    Descriptor::FVarChannel channels[numChannels];
+    channels[channelUV].numValues = g_nuvs;
+    channels[channelUV].valueIndices = g_uvIndices.data();
+    //channels[channelColor].numValues = g_ncolors;
+    //channels[channelColor].valueIndices = g_colorIndices.data();
 
-    //
-    //  Use simpler local type names for the Surface and its factory:
-    //
-    typedef Bfr::RefinerSurfaceFactory<> SurfaceFactory;
-    typedef Bfr::Surface<float>          Surface;
-    typedef Surface::PointDescriptor     SurfacePoint;
+    // Add the channel topology to the main descriptor
+    desc.numFVarChannels = numChannels;
+    desc.fvarChannels = channels;
 
-    //
-    //  Identify the source positions and UVs within more general data
-    //  arrays for the mesh. If position and/or UV are not at the start
-    //  of the vtx and/or fvar data, simply offset the head of the array
-    //  here accordingly:
-    //
-    bool meshHasUVs = (meshTopology.GetNumFVarChannels() > 0);
+    Sdc::SchemeType type = shapescheme;
+    Sdc::Options options;
+    options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_NONE);
+    options.SetFVarLinearInterpolation(Sdc::Options::FVAR_LINEAR_ALL);
+    //options.SetCreasingMethod(Sdc::Options::CREASE_CHAIKIN);
 
-    float const* meshPosData = meshVtxData.data();
-    SurfacePoint  meshPosPoint(3, vtxDataSize);
+    // Instantiate a Far::TopologyRefiner from the descriptor
+    Far::TopologyRefiner* refiner =
+        Far::TopologyRefinerFactory<Descriptor>::Create(desc,
+            Far::TopologyRefinerFactory<Descriptor>::Options(type, options));
 
-    float const* meshUVData = meshHasUVs ? meshFVarData.data() : 0;
-    SurfacePoint  meshUVPoint(2, fvarDataSize);
-
-    //
-    //  Initialize the SurfaceFactory for the given base mesh (very low
-    //  cost in terms of both time and space) and tessellate each face
-    //  independently (i.e. no shared vertices):
-    //
-    //  Note that the SurfaceFactory is not thread-safe by default due to
-    //  use of an internal cache.  Creating a separate instance of the
-    //  SurfaceFactory for each thread is one way to safely parallelize
-    //  this loop.  Another (preferred) is to assign a thread-safe cache
-    //  to the single instance.
-    //
-    //  First declare any evaluation options when initializing:
-    //
-    //  When dealing with face-varying data, an identifier is necessary
-    //  when constructing Surfaces in order to distinguish the different
-    //  face-varying data channels. To avoid repeatedly specifying that
-    //  identifier when only one is present (or of interest), it can be
-    //  specified via the Options.
-    //
-    SurfaceFactory::Options surfaceOptions;
-    if (meshHasUVs) {
-        surfaceOptions.SetDefaultFVarID(0);
+    // Uniformly refine the topolgy up to 'maxlevel'
+    // note: fullTopologyInLastLevel must be true to work with face-varying data
+    {
+        Far::TopologyRefiner::UniformOptions refineOptions(maxlevel);
+        refineOptions.fullTopologyInLastLevel = true;
+        refiner->RefineUniform(refineOptions);
     }
 
-    SurfaceFactory surfaceFactory(meshTopology, surfaceOptions);
+    // Allocate and initialize the 'vertex' primvar data (see tutorial 2 for
+    // more details).
+    std::vector<Vertex> vbuffer(refiner->GetNumVerticesTotal());
+    Vertex* verts = &vbuffer[0];
+    for (int i = 0; i < g_nverts; ++i) {
+        verts[i].SetPosition(g_verts[i][0], g_verts[i][1], g_verts[i][2]);
+    }
 
+    // Allocate & initialize the first channel of 'face-varying' primvars (UVs)
+    std::vector<FVarVertexUV> fvBufferUV(refiner->GetNumFVarValuesTotal(channelUV));
+    FVarVertexUV* fvVertsUV = &fvBufferUV[0];
+    for (int i = 0; i < g_nuvs; ++i) {
+        fvVertsUV[i].u = g_uvs[i][0];
+        fvVertsUV[i].v = g_uvs[i][1];
+    }
+
+    //// Allocate & interpolate the 'face-varying' primvar data (colors)
+    //std::vector<FVarVertexColor> fvBufferColor(refiner->GetNumFVarValuesTotal(channelColor));
+    //FVarVertexColor* fvVertsColor = &fvBufferColor[0];
+    //for (int i = 0; i < g_ncolors; ++i) {
+    //    fvVertsColor[i].r = g_colors[i][0];
+    //    fvVertsColor[i].g = g_colors[i][1];
+    //    fvVertsColor[i].b = g_colors[i][2];
+    //    fvVertsColor[i].a = g_colors[i][3];
+    //}
+
+    // Interpolate both vertex and face-varying primvar data
+    Far::PrimvarRefiner primvarRefiner(*refiner);
+    Vertex* srcVert = verts;
+    FVarVertexUV* srcFVarUV = fvVertsUV;
+    //FVarVertexColor* srcFVarColor = fvVertsColor;
+
+    for (int level = 1; level <= maxlevel; ++level) {
+        Vertex* dstVert = srcVert + refiner->GetLevel(level - 1).GetNumVertices();
+        FVarVertexUV* dstFVarUV = srcFVarUV + refiner->GetLevel(level - 1).GetNumFVarValues(channelUV);
+        //FVarVertexColor* dstFVarColor = srcFVarColor + refiner->GetLevel(level - 1).GetNumFVarValues(channelColor);
+
+        primvarRefiner.Interpolate(level, srcVert, dstVert);
+        primvarRefiner.LimitFaceVarying(srcFVarUV, dstFVarUV, channelUV);
+        primvarRefiner.InterpolateFaceVarying(level, srcFVarUV, dstFVarUV, channelUV);
+        //primvarRefiner.InterpolateFaceVarying(level, srcFVarColor, dstFVarColor, channelColor);
+
+        srcVert = dstVert;
+        srcFVarUV = dstFVarUV;
+        //srcFVarColor = dstFVarColor;
+    }
+
+    // Approximate normals
+    Far::TopologyLevel const& refLastLevel = refiner->GetLevel(maxlevel);
+    int nverts = refLastLevel.GetNumVertices();
+    int nfaces = refLastLevel.GetNumFaces();
+    int firstOfLastVerts = refiner->GetNumVerticesTotal() - nverts;
+
+    std::vector<Vertex> normals(nverts);
+
+    // Different ways to approximate smooth normals
     //
-    //  The Surface to be constructed and evaluated for each face -- as
-    //  well as the intermediate and output data associated with it -- can
-    //  be declared in the scope local to each face. But since dynamic
-    //  memory is involved with these variables, it is preferred to declare
-    //  them outside that loop to preserve and reuse that dynamic memory.
-    //
-    Surface posSurface;
-    Surface uvSurface;
+    // For details check the description at the beginning of the file
+    if (normalApproximation == Limit) {
 
-    std::vector<float> facePatchPoints;
-
-    //std::vector<float> outCoords;
-    //std::vector<float> outPos, outDu, outDv;
-    //std::vector<float> outUV;
-    //std::vector<int>   outFacets;
-
-    std::vector<ShapeData> shape_list;
-
-    //
-    //  Assign Tessellation Options applied for all faces.  Tessellations
-    //  allow the creating of either 3- or 4-sided faces -- both of which
-    //  are supported here via a command line option:
-    //
-    int const tessFacetSize = 3 + tessQuadsFlag;
-
-    Bfr::Tessellation::Options tessOptions;
-    tessOptions.SetFacetSize(tessFacetSize);
-    tessOptions.PreserveQuads(tessQuadsFlag);
-
-    //
-    //  Process each face, writing the output of each in Obj format:
-    //
-    //tutorial::ObjWriter objWriter(options.outputObjFile);
-
-    int numFaces = surfaceFactory.GetNumFaces();
-    for (int faceIndex = 0; faceIndex < numFaces; ++faceIndex) {
+        // Approximation using the normal at the limit with verts that are 
+        // not at the limit
         //
-        //  Initialize the Surfaces for position and UVs of this face.
-        //  There are two ways to do this -- both illustrated here:
-        //
-        //  Creating Surfaces for the different data interpolation types
-        //  independently is clear and convenient, but considerable work
-        //  may be duplicated in the construction process in the case of
-        //  non-linear face-varying Surfaces. So unless it is known that
-        //  face-varying interpolation is linear, use of InitSurfaces()
-        //  is generally preferred.
-        //
-        //  Remember also that the face-varying identifier is omitted from
-        //  the initialization methods here as it was previously assigned
-        //  to the SurfaceFactory::Options. In the absence of an assignment
-        //  of the default FVarID to the Options, a failure to specify the
-        //  FVarID here will result in failure.
-        //
-        //  The cases below are expanded for illustration purposes, and
-        //  validity of the resulting Surface is tested here, rather than
-        //  the return value of initialization methods.
-        //
-        bool createSurfacesTogether = true;
-        if (!meshHasUVs) {
-            surfaceFactory.InitVertexSurface(faceIndex, &posSurface);
+        // For details check the description at the beginning of the file
+
+        std::vector<Vertex> fineLimitPos(nverts);
+        std::vector<Vertex> fineDu(nverts);
+        std::vector<Vertex> fineDv(nverts);
+
+        primvarRefiner.Limit(&verts[firstOfLastVerts], fineLimitPos, fineDu, fineDv);
+
+        for (int vert = 0; vert < nverts; ++vert) {
+            float const* du = fineDu[vert].GetPosition();
+            float const* dv = fineDv[vert].GetPosition();
+
+            float norm[3];
+            cross(du, dv, norm);
+            normals[vert].SetPosition(norm[0], norm[1], norm[2]);
         }
-        else if (createSurfacesTogether) {
-            surfaceFactory.InitSurfaces(faceIndex, &posSurface, &uvSurface);
-        }
-        else {
-            if (surfaceFactory.InitVertexSurface(faceIndex, &posSurface)) {
-                surfaceFactory.InitFaceVaryingSurface(faceIndex, &uvSurface);
-            }
-        }
-        if (!posSurface.IsValid()) continue;
 
+    }
+    else if (normalApproximation == CrossQuad) {
+
+        // Approximate smooth normals by accumulating normal vectors computed as
+        // the cross product of two vectors generated by the 4 verts that 
+        // form each quad
         //
-        //  Declare a simple uniform Tessellation for the Parameterization
-        //  of this face and identify coordinates of the points to evaluate:
-        //
-        Bfr::Tessellation tessPattern(posSurface.GetParameterization(),
-            tessUniformRate, tessOptions);
+        // For details check the description at the beginning of the file
 
-        int numOutCoords = tessPattern.GetNumCoords();
+        for (int f = 0; f < nfaces; f++) {
+            Far::ConstIndexArray faceVertices = refLastLevel.GetFaceVertices(f);
 
-        ShapeData faceOut;
+            // We will use the first three verts to calculate a normal
+            const float* v0 = verts[firstOfLastVerts + faceVertices[0]].GetPosition();
+            const float* v1 = verts[firstOfLastVerts + faceVertices[1]].GetPosition();
+            const float* v2 = verts[firstOfLastVerts + faceVertices[2]].GetPosition();
+            const float* v3 = verts[firstOfLastVerts + faceVertices[3]].GetPosition();
 
-        faceOut.outCoords.resize(numOutCoords * 2);
+            // Calculate the cross product between the vectors formed by v1-v0 and
+            // v2-v0, and then normalize the result
+            float normalCalculated[] = { 0.0,0.0,0.0 };
+            float a[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
+            float b[3] = { v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2] };
+            cross(a, b, normalCalculated);
+            normalize(normalCalculated);
 
-        tessPattern.GetCoords(faceOut.outCoords.data());
+            // Accumulate that normal on all verts that are part of that face
+            for (int vInFace = 0; vInFace < faceVertices.size(); vInFace++) {
 
-        //
-        //  Prepare the patch points for the Surface, then use them to
-        //  evaluate output points for all identified coordinates:
-        //
-        //  Evaluate vertex positions:
-        {
-            //  Resize patch point and output arrays:
-            int pointSize = meshPosPoint.size;
-
-            facePatchPoints.resize(posSurface.GetNumPatchPoints() * pointSize);
-
-            faceOut.outPos.resize(numOutCoords* pointSize);
-            faceOut.outDu.resize(numOutCoords* pointSize);
-            faceOut.outDv.resize(numOutCoords* pointSize);
-
-            //  Populate patch point and output arrays:
-            float* patchPosData = facePatchPoints.data();
-            SurfacePoint  patchPosPoint(pointSize);
-
-            posSurface.PreparePatchPoints(meshPosData, meshPosPoint,
-                patchPosData, patchPosPoint);
-
-            for (int i = 0, j = 0; i < numOutCoords; ++i, j += pointSize) {
-                posSurface.Evaluate(&faceOut.outCoords[i * 2],
-                    patchPosData, patchPosPoint,
-                    &faceOut.outPos[j], &faceOut.outDu[j], &faceOut.outDv[j]);
+                int vertexIndex = faceVertices[vInFace];
+                normals[vertexIndex].position[0] += normalCalculated[0];
+                normals[vertexIndex].position[1] += normalCalculated[1];
+                normals[vertexIndex].position[2] += normalCalculated[2];
             }
         }
 
-        //  Evaluate face-varying UVs (when present):
-        if (meshHasUVs) {
-            //  Resize patch point and output arrays:
-            //      - note reuse of the same patch point array as position
-            int pointSize = meshUVPoint.size;
+    }
+    else if (normalApproximation == CrossTriangle) {
 
-            facePatchPoints.resize(uvSurface.GetNumPatchPoints() * pointSize);
+        // Approximate smooth normals by accumulating normal vectors computed as
+        // the cross product of two vectors generated by 3 verts of the quad
+        //
+        // For details check the description at the beginning of the file
 
-            faceOut.outUV.resize(numOutCoords * pointSize);
+        for (int f = 0; f < nfaces; f++) {
+            Far::ConstIndexArray faceVertices = refLastLevel.GetFaceVertices(f);
 
-            //  Populate patch point and output arrays:
-            float* patchUVData = facePatchPoints.data();
-            SurfacePoint patchUVPoint(pointSize);
+            // We will use the first three verts to calculate a normal
+            const float* v0 = verts[firstOfLastVerts + faceVertices[0]].GetPosition();
+            const float* v1 = verts[firstOfLastVerts + faceVertices[1]].GetPosition();
+            const float* v2 = verts[firstOfLastVerts + faceVertices[2]].GetPosition();
 
-            uvSurface.PreparePatchPoints(meshUVData, meshUVPoint,
-                patchUVData, patchUVPoint);
+            // Calculate the cross product between the vectors formed by v1-v0 and
+            // v2-v0, and then normalize the result
+            float normalCalculated[] = { 0.0,0.0,0.0 };
+            float a[3] = { v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2] };
+            float b[3] = { v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2] };
+            cross(a, b, normalCalculated);
+            normalize(normalCalculated);
 
-            for (int i = 0, j = 0; i < numOutCoords; ++i, j += pointSize) {
-                uvSurface.Evaluate(&faceOut.outCoords[i * 2],
-                    patchUVData, patchUVPoint,
-                    &faceOut.outUV[j]);
+            // Accumulate that normal on all verts that are part of that face
+            for (int vInFace = 0; vInFace < faceVertices.size(); vInFace++) {
+
+                int vertexIndex = faceVertices[vInFace];
+                normals[vertexIndex].position[0] += normalCalculated[0];
+                normals[vertexIndex].position[1] += normalCalculated[1];
+                normals[vertexIndex].position[2] += normalCalculated[2];
             }
         }
-
-        //
-        //  Identify the faces of the Tessellation:
-        //
-        //  Note the need to offset vertex indices for the output faces --
-        //  using the number of vertices generated prior to this face. One
-        //  of several Tessellation methods to transform the facet indices
-        //  simply translates all indices by the desired offset.
-        //
-        int objVertexIndexOffset = 0; // = objWriter.GetNumVertices();
-        for (const auto& s : shape_list) 
-            objVertexIndexOffset += s.outPos.size() / (3 + tessQuadsFlag);
-        
-
-        faceOut.numFacets = tessPattern.GetNumFacets();
-        faceOut.outFacets.resize(faceOut.numFacets * tessFacetSize);
-        tessPattern.GetFacets(faceOut.outFacets.data());
-
-        tessPattern.TransformFacetCoordIndices(faceOut.outFacets.data(),
-            objVertexIndexOffset);
-
-        ////
-        ////  Write the evaluated points and faces connecting them as Obj:
-        ////
-        //objWriter.WriteGroupName("baseFace_", faceIndex);
-
-        //if (meshHasUVs && options.uv2xyzFlag) {
-        //    objWriter.WriteVertexPositions(outUV, 2);
-        //    objWriter.WriteFaces(outFacets, tessFacetSize, false, false);
-        //}
-        //else {
-        //    objWriter.WriteVertexPositions(outPos);
-        //    objWriter.WriteVertexNormals(outDu, outDv);
-        //    if (meshHasUVs) {
-        //        objWriter.WriteVertexUVs(outUV);
-        //    }
-        //    objWriter.WriteFaces(outFacets, tessFacetSize, true, meshHasUVs);
-        //}
-
-        shape_list.push_back(std::move(faceOut));
     }
-    return shape_list;
+
+    // Finally we just need to normalize the accumulated normals
+    for (int vert = 0; vert < nverts; ++vert) {
+        normalize(&normals[vert].position[0]);
+    }
+
+#ifdef  DEBUG
+
+    { // Output OBJ of the highest level refined -----------
+
+        // Print vertex positions
+        for (int vert = 0; vert < nverts; ++vert) {
+            float const* pos = verts[firstOfLastVerts + vert].GetPosition();
+            printf("v %f %f %f\n", pos[0], pos[1], pos[2]);
+        }
+
+        // Print vertex normals
+        for (int vert = 0; vert < nverts; ++vert) {
+            float const* pos = normals[vert].GetPosition();
+            printf("vn %f %f %f\n", pos[0], pos[1], pos[2]);
+        }
+
+        // Print uvs
+        int nuvs = refLastLevel.GetNumFVarValues(channelUV);
+        int firstOfLastUvs = refiner->GetNumFVarValuesTotal(channelUV) - nuvs;
+        for (int fvvert = 0; fvvert < nuvs; ++fvvert) {
+            FVarVertexUV const& uv = fvVertsUV[firstOfLastUvs + fvvert];
+            printf("vt %f %f\n", uv.u, uv.v);
+        }
+
+        // Print faces
+        for (int face = 0; face < nfaces; ++face) {
+            Far::ConstIndexArray fverts = refLastLevel.GetFaceVertices(face);
+            Far::ConstIndexArray fuvs = refLastLevel.GetFaceFVarValues(face, channelUV);
+
+            // all refined Catmark faces should be quads
+            assert(fverts.size() == 4 && fuvs.size() == 4);
+
+            printf("f ");
+            for (int vert = 0; vert < fverts.size(); ++vert) {
+                // OBJ uses 1-based arrays...
+                printf("%d/%d/%d ", fverts[vert] + 1, fuvs[vert] + 1, fverts[vert] + 1);
+            }
+            printf("\n");
+        }
+    }
+
+    std::cout << "geometry_list out: \n";
+#endif //  DEBUG
+
+
+    if (op->rebuild(Mask_Primitives)) {
+        out.add_object(obj);
+        //out.writable_primitive(obj, );
+
+        auto polymesh = new PolyMesh(nfaces, 4);
+        for (size_t i = 0; i < nfaces; ++i) {
+            Far::ConstIndexArray fverts = refLastLevel.GetFaceVertices(i);
+            std::vector<int> face; 
+            face.reserve(4);
+            for (int i = 0; i < 4; ++i) face.push_back(fverts[i] /*- vertex_offset*/);
+            polymesh->add_face(4, face.data());
+        }
+        out.add_primitive(obj, polymesh);
+
+        //// adding material
+        //auto input_shader = (Iop*)input0();
+        out[obj].material = geoInfo.material;
+        //out[obj + 2].useMaterialContext = true;
+
+        // Force points and attributes to update:
+        op->set_rebuild(Mask_Points | Mask_Attributes);
+    }
+
+    if (op->rebuild(Mask_Points)) {
+        PointList& points = *out.writable_points(obj);
+        points.resize(nverts);
+
+
+        for (int i = 0; i < nverts; ++i) {
+            float const* pos = verts[firstOfLastVerts + i].GetPosition();
+            points[i] = { pos[0], pos[1], pos[2] };
+#ifdef  DEBUG
+            printf("vertices_out %f %f %f\n", pos[0], pos[1], pos[2]);
+#endif
+        }
+    }
+
+    int nuvs = refLastLevel.GetNumFVarValues(channelUV);
+    int firstOfLastUvs = refiner->GetNumFVarValuesTotal(channelUV) - nuvs;
+    std::cout << firstOfLastUvs << "\n";
+    if (op->rebuild(Mask_Attributes) && nuvs != 0) {
+        Attribute* uv = out.writable_attribute(obj, Group_Vertices, "uv", VECTOR4_ATTRIB);
+        assert(uv != nullptr);
+        uv->resize(nuvs*nfaces);
+
+        int faceCount = 0;
+        for (int face = 0; face < nfaces; ++face) {
+            Far::ConstIndexArray fverts = refLastLevel.GetFaceVertices(face);
+            Far::ConstIndexArray fuvs = refLastLevel.GetFaceFVarValues(face, channelUV);
+
+            // all refined Catmark faces should be quads
+            assert(fverts.size() == 4 && fuvs.size() == 4);
+
+
+
+            for (int fvvert = 0; fvvert < fverts.size(); ++fvvert) {
+                FVarVertexUV const& uvIn = fvVertsUV[firstOfLastUvs + fuvs[fvvert]];
+                uv->vector4(faceCount + fvvert).set(uvIn.u, uvIn.v, 0, 1);
+#ifdef  DEBUG
+                printf("uv_out %d\n", fuvs[fvvert]);
+                printf("uv_out %f %f\n", uvIn.u, uvIn.v);
+#endif
+            }
+            faceCount += 4;
+        }
+    }
+
+    if (op->rebuild(Mask_Attributes)) {
+        Attribute* N = out.writable_attribute(obj, Group_Points, "N", NORMAL_ATTRIB);
+        assert(N != nullptr);
+        N->resize(nverts);
+
+
+        for (int vert = 0; vert < nverts; ++vert) {
+            float const* pos = normals[vert].GetPosition();
+            N->normal(vert).set(pos[0], pos[1], pos[2]);
+        }
+    }
+
+    delete refiner;
+
 }
-
-Far::TopologyRefiner* readTopologyRefiner(const DD::Image::GeoInfo& geoInfo, DD::Image::Op* op, Sdc::SchemeType schemeType, std::vector<float>& posVector, std::vector<float>& uvVector)
-{
-
-    const Shape* shape = 0;
-
-    //std::ifstream ifs(filename);
-    //if (ifs) {
-    //    std::stringstream ss;
-    //    ss << ifs.rdbuf();
-    //    ifs.close();
-    //    std::string shapeString = ss.str();
-
-    shape = read_GeoOp_input(geoInfo, op);
-    if (shape == NULL) {
-        fprintf(stderr, "no geo found");
-        return nullptr;
-    }
-
-    Sdc::SchemeType sdcType = GetSdcType(*shape);
-    Sdc::Options    sdcOptions = GetSdcOptions(*shape);
-
-    Far::TopologyRefiner* refiner = Far::TopologyRefinerFactory<Shape>::Create(
-        *shape, Far::TopologyRefinerFactory<Shape>::Options(sdcType, sdcOptions));
-    if (refiner == 0) {
-        fprintf(stderr,
-            "Error:  Unable to construct TopologyRefiner from Obj file '%s'\n",
-            "geoInfo");
-        return 0;
-    }
-
-    int numVertices = refiner->GetNumVerticesTotal();
-    posVector.resize(numVertices * 3);
-    std::memcpy(&posVector[0], &shape->verts[0], 3 * numVertices * sizeof(float));
-
-    uvVector.resize(0);
-    if (refiner->GetNumFVarChannels()) {
-        int numUVs = refiner->GetNumFVarValuesTotal(0);
-        uvVector.resize(numUVs * 2);
-        std::memcpy(&uvVector[0], &shape->uvs[0], 2 * numUVs * sizeof(float));
-    }
-
-    delete shape;
-    return refiner;
-}
-
 
 
