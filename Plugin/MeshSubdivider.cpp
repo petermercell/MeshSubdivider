@@ -45,7 +45,7 @@ getNormal(float N[3], float const du[3], float const dv[3]) {
 }
 
 
-class MeshReducer : public SourceGeo
+class MeshSubdivider : public SourceGeo
 {
 private:
     int _enum_scheme;
@@ -72,7 +72,7 @@ public:
     const char* Class() const { return CLASS; }
     const char* node_help() const { return HELP; }
 
-    MeshReducer(Node* node) : SourceGeo(node)
+    MeshSubdivider(Node* node) : SourceGeo(node)
         , _enum_scheme(1)
         , schemeType(Sdc::SCHEME_CATMARK)
         , tessQuadsFlag(false)
@@ -153,12 +153,12 @@ public:
 
 };
 
-static Op* build(Node* node) { return new MeshReducer(node); }
-const Op::Description MeshReducer::description(CLASS, build);
+static Op* build(Node* node) { return new MeshSubdivider(node); }
+const Op::Description MeshSubdivider::description(CLASS, build);
 
 // end of MeshReducer.C
 
-void MeshReducer::get_geometry_hash()
+void MeshSubdivider::get_geometry_hash()
 {
     // Get all hashes up-to-date
     GeoOp::get_geometry_hash(); //needs to be GeoOp as it updates the input geo hash
@@ -179,7 +179,7 @@ void MeshReducer::get_geometry_hash()
 
 }
 
-void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
+void MeshSubdivider::create_geometry(Scene& scene, GeometryList& out)
 {
 
 
@@ -198,7 +198,7 @@ void MeshReducer::create_geometry(Scene& scene, GeometryList& out)
         for (uint32_t obj = 0; obj < object_list.objects(); obj++) {
             const DD::Image::GeoInfo& info = object_list[obj];
 
-            far_subdivision_with_primvar(info, this, out, obj, tessUniformRate, schemeType);
+            far_subdivision_with_primvar(info, this, out, obj, std::max(tessUniformRate, 1), schemeType);
 
         }
 

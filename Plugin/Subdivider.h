@@ -37,7 +37,7 @@
 using namespace DD::Image;
 using namespace OpenSubdiv;
 
-#define DEBUG
+//#define DEBUG
 
 //------------------------------------------------------------------------------
 // Math helpers.
@@ -99,6 +99,10 @@ struct Vertex {
         return position;
     }
 
+    float* GetPosition() {
+        return position;
+    }
+
     // Public interface ------------------------------------
     float const* GetData() const {
         return position;
@@ -117,6 +121,11 @@ struct UV {
     UV(UV const& src) {
         uv[0] = src.uv[0];
         uv[1] = src.uv[1];
+    }
+
+    UV(const float u, const float v) {
+        uv[0] = u;
+        uv[1] = v;
     }
 
     void Clear() {
@@ -204,5 +213,5 @@ void far_subdivision_with_primvar(  const DD::Image::GeoInfo& geoInfo,
                                     DD::Image::GeoOp* op,
                                     DD::Image::GeometryList& out,
                                     const int obj,
-                                    const int maxlevel = 2,
-                                    Sdc::SchemeType shapescheme = OpenSubdiv::Sdc::SCHEME_CATMARK);
+                                    const int maxlevel,
+                                    Sdc::SchemeType shapescheme);
