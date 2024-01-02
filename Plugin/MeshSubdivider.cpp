@@ -5,6 +5,7 @@
 
 #include "DDImage/GeoOp.h"
 #include "DDImage/SourceGeo.h"
+#include "DDImage/ModifyGeo.h"
 #include "DDImage/Scene.h"
 #include "DDImage/Knob.h"
 #include "DDImage/Knobs.h"
@@ -19,9 +20,10 @@
 using namespace DD::Image;
 
 static const char* const CLASS = "MeshSubdivider";
-static const char* const HELP = "smooth geo faces. triangles and quads";
+static const char* const HELP = "smooth geo faces. into quads only";
 
-static const char* const scheme_type_mode[] = { "Bilinear", "Catmull Clark", "Loop", 0 };
+static const char* const scheme_type_mode[] = { "Bilinear", "Catmull Clark", /*"Loop",*/ 0 };
+static const char* const boundary_interpolation_mode[] = { "boundary_none", "boundary edge only", "boundary edge and corner", 0};
 
 void
 getNormal(float N[3], float const du[3], float const dv[3]) {
@@ -45,12 +47,14 @@ getNormal(float N[3], float const du[3], float const dv[3]) {
 }
 
 
-class MeshSubdivider : public SourceGeo
+class MeshSubdivider : public ModifyGeo
 {
 private:
     int _enum_scheme;
+    int _enum_boundary;
 
     Sdc::SchemeType schemeType;
+    Sdc::Options options;
     bool tessQuadsFlag;
     int tessUniformRate;
 
@@ -72,7 +76,7 @@ public:
     const char* Class() const { return CLASS; }
     const char* node_help() const { return HELP; }
 
-    MeshSubdivider(Node* node) : SourceGeo(node)
+    MeshSubdivider(Node* node) : ModifyGeo(node)
         , _enum_scheme(1)
         , schemeType(Sdc::SCHEME_CATMARK)
         , tessQuadsFlag(false)
@@ -82,37 +86,38 @@ public:
     int minimum_inputs() const { return 1; }
     int maximum_inputs() const { return 1; }
 
-    bool test_input(int input, Op* op) const
-    {
-        if (input == 0)
-            return dynamic_cast<GeoOp*>(op) != 0;
-        return SourceGeo::test_input(input, op);
-    }
+    //bool test_input(int input, Op* op) const
+    //{
+    //    //if (input == 0)
+    //    //    return dynamic_cast<GeoOp*>(op) != 0;
+    //    return GeoOp::test_input(input, op);
+    //}
 
-    Op* default_input(int input) const
-    {
-        //if (input == 1)
-        //    return 0;
-        return SourceGeo::default_input(input);
-    }
+    //Op* default_input(int input) const
+    //{
+    //    //if (input == 1)
+    //    //    return 0;
+    //    return GeoOp::default_input(input);
+    //}
 
-    const char* input_label(int input, char* buffer) const
-    {
-        switch (input) {
-        //case 0:
-        //    return "material";
-        //case 1:
-        //    return "geo";
-        default:
-            return 0;
-        }
-    }
+    //const char* input_label(int input, char* buffer) const
+    //{
+    //    switch (input) {
+    //    //case 0:
+    //    //    return "material";
+    //    //case 1:
+    //    //    return "geo";
+    //    default:
+    //        return 0;
+    //    }
+    //}
 
     void knobs(Knob_Callback f)
     {
         //GeoOp::knobs(f);
 
         Enumeration_knob(f, &_enum_scheme, scheme_type_mode, "scheme_type");
+        Enumeration_knob(f, &_enum_boundary, boundary_interpolation_mode, "boundary_type");
 
         Bool_knob(f, &tessQuadsFlag, "preserve_quads"); 
         SetFlags(f, Knob::HIDDEN);
@@ -126,20 +131,29 @@ public:
         if (k->is("scheme_type")) {
             switch (_enum_scheme) {
             case 0:
-
                 schemeType = (Sdc::SCHEME_BILINEAR);
                 break;
             case 1:
-
                 schemeType = (Sdc::SCHEME_CATMARK);
                 break;
             case 2:
-
                 schemeType = (Sdc::SCHEME_LOOP);
                 break;
-            
             }
-
+            return 1;
+        }
+        if (k->is("boundary_type")) {
+            switch (_enum_boundary) {
+            case 0:
+                options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_NONE);
+                break;
+            case 1:
+                options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_ONLY);
+                break;
+            case 2:
+                options.SetVtxBoundaryInterpolation(Sdc::Options::VTX_BOUNDARY_EDGE_AND_CORNER);
+                break;
+            }
             return 1;
         }
         return 1;
@@ -149,7 +163,7 @@ public:
     void get_geometry_hash();
 
 
-    virtual void create_geometry(Scene& scene, GeometryList& out) override;
+    virtual void modify_geometry(int obj, Scene& scene, GeometryList& out) override;
 
 };
 
@@ -179,28 +193,29 @@ void MeshSubdivider::get_geometry_hash()
 
 }
 
-void MeshSubdivider::create_geometry(Scene& scene, GeometryList& out)
+void MeshSubdivider::modify_geometry(int obj, Scene& scene, GeometryList& out)
 {
-
-
-    //if (rebuild(Mask_Primitives) || rebuild(Mask_Points) || rebuild(Mask_Attributes)) {
     if (rebuild(Mask_Primitives)) {
 
-        GeometryList object_list;
+        //GeometryList object_list;
 
-        input0()->get_geometry(scene, object_list);
+        //input0()->get_geometry(scene, out);
 
-        scene.clear();
+        //scene.clear();
 
-        out.delete_objects();
+        //out.delete_objects();
 
         // Call the engine on all the caches:
-        for (uint32_t obj = 0; obj < object_list.objects(); obj++) {
-            const DD::Image::GeoInfo& info = object_list[obj];
+        //for (uint32_t obj = 0; obj < out.objects(); obj++) {
+        //    const DD::Image::GeoInfo& info = out[obj];
 
-            far_subdivision_with_primvar(info, this, out, obj, std::max(tessUniformRate, 1), schemeType);
 
-        }
+        //    far_subdivision_with_primvar(info, this, out, obj, std::max(tessUniformRate, 1), schemeType, options);
+
+        //}
+        const DD::Image::GeoInfo& info = out[obj];
+        far_subdivision_with_primvar(info, this, out, obj, std::max(tessUniformRate, 1), schemeType, options);
+
 
         out.synchronize_objects();
         // Force points and attributes to update:

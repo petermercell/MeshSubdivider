@@ -214,4 +214,5 @@ void far_subdivision_with_primvar(  const DD::Image::GeoInfo& geoInfo,
                                     DD::Image::GeometryList& out,
                                     const int obj,
                                     const int maxlevel,
-                                    Sdc::SchemeType shapescheme);
+                                    Sdc::SchemeType shapescheme,
+                                    Sdc::Options opt);
