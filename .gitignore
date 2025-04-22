@@ -309,6 +309,9 @@ paket-files/
 # FAKE - F# Make
 .fake/
 
+# CMAKE - F# Make
+build/
+
 # CodeRush personal settings
 .cr/personal
 
