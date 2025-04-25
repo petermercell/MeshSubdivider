@@ -6,12 +6,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ----- Use VCPKG if present -----
 # You should pass this from the CLI:
-# export NUKE_INCLUDE_DIR=/opt/metaphysic/Nuke/Nuke15.1v3/include
-# export NUKE_LIB_DIR=/opt/metaphysic/Nuke/Nuke15.1v3
+# export NUKE_INCLUDE_DIR=/path/Nuke/Nuke15.1v3/include
+# export NUKE_LIB_DIR=/path/metaphysic/Nuke/Nuke15.1v3
 # mkdir build && cd build
-# cmake .. -DCMAKE_TOOLCHAIN_FILE=/home/yuri.carrara.r/vcpkg/scripts/buildsystems/vcpkg.cmake
+# cmake .. -DCMAKE_TOOLCHAIN_FILE=/path/vcpkg/scripts/buildsystems/vcpkg.cmake
 # make
-# Don't hardcode it inside this file for portability
 
 # ----- Set Nuke and OpenSubdiv paths -----
 set(NUKE_INCLUDE_DIR $ENV{NUKE_INCLUDE_DIR} CACHE PATH "Path to Nuke headers")
